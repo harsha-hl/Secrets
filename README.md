@@ -1,2 +1,0 @@
-# Secrets
-Authentication and Security
