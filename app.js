@@ -4,7 +4,9 @@ const bodyParser = require('body-parser');
 const ejs  = require('ejs');
 const mongoose = require('mongoose');
 // const encrypt = require('mongoose-encryption'); // Used in level 2
-const md5 = require('md5');
+// const md5 = require('md5'); //Used in level 3
+const bcrypt = require('bcrypt');
+const saltRounds = 10;
 
 const app = express();
 
@@ -38,28 +40,34 @@ app.get('/login', function(req, res){
 
 app.post('/login', function(req, res){
     const username = req.body.username;
-    const password = md5(req.body.password);
+    const password = req.body.password;
+
     User.findOne({username: username}, function(err, user){
         if(err)console.log(err);
         else if(user){
-            if(user.password === password)res.render('secrets');
-            else console.log("Wrong password");
+            bcrypt.compare(password, user.password, function(err, result) {
+                // result == true
+                if(result === true) res.render('secrets');
+            });
         }
+        else console.log("Wrong password");
     });
 });
 
 app.post('/register', function(req, res){
     const username = req.body.username;
-    const password = md5(req.body.password);
-    const user = new User({
-        username: username,
-        password: password
+    const password = req.body.password;
+    bcrypt.hash(password, saltRounds, function(err, hash) {
+        // Store hash in your password DB.
+        const user = new User({
+            username: username,
+            password: hash
+        });
+        user.save(function(err){
+            if(err)console.log(err);
+            else res.render('secrets');
+        });
     });
-    user.save(function(err){
-        if(err)console.log(err);
-        else res.render('secrets');
-    });
-
 });
 
 app.get('/submit', function(req, res){
