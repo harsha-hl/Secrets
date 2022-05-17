@@ -11,6 +11,9 @@ const session = require('express-session');
 const passport = require('passport');
 const passportLocalMongoose = require('passport-local-mongoose'); 
 const { use } = require('passport/lib');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const findOrCreate = require('mongoose-findorcreate')
+
 
 const app = express();
 
@@ -34,12 +37,15 @@ mongoose.connect("mongodb://localhost:27017/userDB");
 
 const userSchema = new mongoose.Schema({
     username: String,
-    password: String
+    password: String,
+    googleId: String //Added in level 6 becuz users can now register via google or locally by giving username and password
 });
 
 // Setup passport-local-mongoose and add it as plugin to schema
 // This is used to salt and hash passwords and store data into the mongo database
 userSchema.plugin(passportLocalMongoose);
+// Add findOrCreate plugin for that function to work
+userSchema.plugin(findOrCreate);
 
 // console.log(process.env.API_KEY);
 // userSchema.plugin(encrypt,{secret: process.env.SECRET, encryptedFields: ["password"]});
@@ -49,13 +55,55 @@ const User = new mongoose.model('User', userSchema);
 //Serialise and deserialise is used whenever passport is used
 //Serialise (create cookie) and deserialise (open and fetch cookie contents) the user
 passport.use(User.createStrategy());
-passport.serializeUser(User.serializeUser());
-passport.deserializeUser(User.deserializeUser());
+//These serialise and deserialise functions work for any authentication (not only local like previous commits)
+// used to serialize the user for the session
+passport.serializeUser(function(user, done) {
+    done(null, user.id); 
+});
+// used to deserialize the user
+passport.deserializeUser(function(id, done) {
+    User.findById(id, function(err, user) {
+        done(err, user);
+    });
+});
 
+passport.use(new GoogleStrategy({
+    clientID: process.env.CLIENT_ID,
+    clientSecret: process.env.CLIENT_SECRET,
+    callbackURL: "http://localhost:3000/auth/google/secrets",
+    userProfileURL: 'https://www.googleapis.com/oauth2/v3/userinfo'
+  },
+  function(accessToken, refreshToken, profile, cb) {
+    User.findOrCreate({ googleId: profile.id }, function (err, user) {
+        //This function adds a document for this user the first time they register via google and pther times, it finds
+        //the dpcument by the google id of the user and authenticates it
+      return cb(err, user);
+    });
+  }
+));
 
 app.get('/', function(req, res){
     res.render('home');
 });
+
+//Using the same passport library, many different stratergies of authenticating passwords can be implemented
+//Initiate authentication with google by using google as stratergy, and also tell that we want profile of user 
+// containing username and email id for storing in databse etc
+app.get('/auth/google',
+  passport.authenticate('google', { scope: ['profile'] })
+);
+
+//Users will be redirected to this path after they have authenticated with Google. 
+//The path will be appended with the authorization code for access, 
+//Here we are authenticating it locally!!! using google stratergy, if failure return to login otherwise secrets
+//Here, successfull authentication means the cookie was successfully created and now stores thisss user's login session.
+app.get('/auth/google/secrets', 
+  passport.authenticate('google', { failureRedirect: '/login ' }),
+  function(req, res) {
+    // Successful authentication, redirect to secrets.
+    res.redirect('/secrets');
+  });
+
 
 app.get('/register', function(req, res){
     res.render('register');
@@ -92,6 +140,7 @@ app.post('/register', function(req, res){
         }
         else{ //If no errors, we now authenticate our user using passport
             // Local here is the type of authentication, here we r using a local authentication
+            // See /auth/google we use google stratergy
             passport.authenticate("local")(req, res, function(){ //This callback is triggered only if the authentication was successfull
                 //Here, successfull authentication means the cookie was successfully created and now stores thisss user's login session.
                 //Hence we redirect it to the secrets route NOT secrets PAGE (this function callback runs only when authentication successfull)
