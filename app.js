@@ -13,6 +13,7 @@ const passportLocalMongoose = require('passport-local-mongoose');
 const { use } = require('passport/lib');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const GitHubStrategy = require('passport-github2').Strategy;
+const TwitterStrategy = require('passport-twitter').Strategy;
 const findOrCreate = require('mongoose-findorcreate')
 
 
@@ -26,13 +27,12 @@ app.set('view engine', 'ejs');
 app.use(session({
     secret: process.env.SESSION_SECRET,
     resave: false,
-    saveUninitialized: false
+    saveUninitialized: false,
 }));
 
 // Initialise and setup passport to deal with/ manage those  sessions
 app.use(passport.initialize());
 app.use(passport.session());
-
 
 mongoose.connect("mongodb://localhost:27017/userDB");
 
@@ -40,7 +40,8 @@ const userSchema = new mongoose.Schema({
     username: String,
     password: String,
     googleId: String, //Added in level 6 becuz users can now register via google or locally by giving username and password
-    githubId: String
+    githubId: String,
+    twitterId: String
 });
 
 // Setup passport-local-mongoose and add it as plugin to schema
@@ -69,10 +70,25 @@ passport.deserializeUser(function(id, done) {
     });
 });
 
+// Twitter
+passport.use(new TwitterStrategy({
+    consumerKey: process.env.TWITTER_CONSUMER_KEY,
+    consumerSecret: process.env.TWITTER_CONSUMER_SECRET,
+    callbackURL: "http://127.0.0.1:3000/auth/twitter/secrets"    // Notice how localhost isnt used here...even in twitter console make sure the same 127....is there as callback url character to character
+  },
+  function(token, tokenSecret, profile, cb) {
+    User.findOrCreate({ twitterId: profile.id }, function (err, user) {
+      return cb(err, user);
+    });
+  }
+));
+
+
+
 // GITHUB
 passport.use(new GitHubStrategy({
     clientID: process.env.GITHUB_CLIENT_ID,
-    clientSecret: process.env.GITHUB_CLIENT_SECRET,
+    clientSecret: process.env.GITHUB_CLIENT_SECRET, 
     callbackURL: "http://localhost:3000/auth/github/secrets"
   },
   function(accessToken, refreshToken, profile, done) {
@@ -125,6 +141,16 @@ app.get('/auth/github',
 
 app.get('/auth/github/secrets', 
   passport.authenticate('github', { failureRedirect: '/login' }),
+  function(req, res) {
+    // Successful authentication, redirect home.
+    res.redirect('/secrets');
+  });
+
+  app.get('/auth/twitter',
+  passport.authenticate('twitter'));
+
+app.use('/auth/twitter/secrets', 
+  passport.authenticate('twitter', { failureRedirect: '/login' }),
   function(req, res) {
     // Successful authentication, redirect home.
     res.redirect('/secrets');
