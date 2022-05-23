@@ -12,10 +12,11 @@ const passport = require('passport');
 const passportLocalMongoose = require('passport-local-mongoose'); 
 const { use } = require('passport/lib');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
+const GitHubStrategy = require('passport-github2').Strategy;
 const findOrCreate = require('mongoose-findorcreate')
 
 
-const app = express();
+const app = express(); 
 
 app.use(bodyParser.urlencoded({extended:true}));
 app.use(express.static("public"));
@@ -38,7 +39,8 @@ mongoose.connect("mongodb://localhost:27017/userDB");
 const userSchema = new mongoose.Schema({
     username: String,
     password: String,
-    googleId: String //Added in level 6 becuz users can now register via google or locally by giving username and password
+    googleId: String, //Added in level 6 becuz users can now register via google or locally by giving username and password
+    githubId: String
 });
 
 // Setup passport-local-mongoose and add it as plugin to schema
@@ -67,9 +69,23 @@ passport.deserializeUser(function(id, done) {
     });
 });
 
+// GITHUB
+passport.use(new GitHubStrategy({
+    clientID: process.env.GITHUB_CLIENT_ID,
+    clientSecret: process.env.GITHUB_CLIENT_SECRET,
+    callbackURL: "http://localhost:3000/auth/github/secrets"
+  },
+  function(accessToken, refreshToken, profile, done) {
+    User.findOrCreate({ githubId: profile.id }, function (err, user) {
+      return done(err, user);
+    });
+  }
+));
+
+// GOOGLE
 passport.use(new GoogleStrategy({
-    clientID: process.env.CLIENT_ID,
-    clientSecret: process.env.CLIENT_SECRET,
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     callbackURL: "http://localhost:3000/auth/google/secrets",
     userProfileURL: 'https://www.googleapis.com/oauth2/v3/userinfo'
   },
@@ -103,6 +119,21 @@ app.get('/auth/google/secrets',
     // Successful authentication, redirect to secrets.
     res.redirect('/secrets');
   });
+
+app.get('/auth/github',
+  passport.authenticate('github', { scope: [ 'user:email' ] }));
+
+app.get('/auth/github/secrets', 
+  passport.authenticate('github', { failureRedirect: '/login' }),
+  function(req, res) {
+    // Successful authentication, redirect home.
+    res.redirect('/secrets');
+  });
+
+
+
+
+
 
 
 app.get('/register', function(req, res){
