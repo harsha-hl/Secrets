@@ -43,7 +43,8 @@ const userSchema = new mongoose.Schema({
     googleId: String, //Added in level 6 becuz users can now register via google or locally by giving username and password
     githubId: String,
     twitterId: String,
-    facebookId: String
+    facebookId: String,
+    secrets: [{type: String}] //Way of specifying that each user can have an array of strings/secrets.
 });
 
 // Setup passport-local-mongoose and add it as plugin to schema
@@ -232,13 +233,25 @@ app.post('/register', function(req, res){
 });
 
 app.get('/secrets', function(req, res){
-    //Any random user shouldnt be able to simply type /secrets and access it in his url.
-    //We therefore use passport and sessions to ensure that only a logged in user is allowed to proceed further and view the secrets.
-    if(req.isAuthenticated()){
-        res.render('secrets'); 
-    } else{ //Send them to login before accessing secrets page
-        res.redirect('/login');
-    }
+    //Any random user shouldnt be able to simply type /secrets and access it in his url. - Until Level 6
+    //We therefore use passport and sessions to ensure that only a logged in user is allowed to proceed further and view the secrets. -Until Level 6
+    // if(req.isAuthenticated()){
+    //     res.render('secrets'); 
+    // } else{ //Send them to login before accessing secrets page
+    //     res.redirect('/login');
+    // }
+
+    // Finally we want an application wherein anybody can view the secrets (no need to even log in) as they will be viewing 
+    // secrets by anonymous people. We only check for authentication when they want to submit a secret.
+    // We search the database for all the users who have a secret/secrets associated with their document.
+    // This means we search for documents having 'secrets' not null (exists:true) and also not empty that is atleast one secret they have  {$size: 0}.
+    User.find({secret: { $exists: true, $not: {$size: 0} }}, function(err, foundUsers){
+      if(err)console.log(err);
+      else if(foundUsers){
+        res.render('secrets', {users: foundUsers});
+      }
+    });
+
 });
 
 app.get('/logout', function(req, res){
@@ -247,7 +260,27 @@ app.get('/logout', function(req, res){
 });
 
 app.get('/submit', function(req, res){
-    res.render('submit');
+    // User must be authenticated before he gets access to submit his secret.
+    if(req.isAuthenticated()){
+      res.render('submit'); 
+  } else{ //Send them to login before tehy can submit a secret.
+      res.redirect('/login');
+  }
+});
+
+app.post('/submit', function(req, res){
+  const secret = req.body.secret;
+  //req.user.id gives us the unique id of the users document. (That user who made post request to /submit route)
+  //Passport automatically attaches the id of document(user) to the req whenever the user is logged in session and makes a post request.
+  User.findById(req.user.id, function(err, user){
+    if(err)console.log(err);
+    else if(user){
+      user.secrets.push(secret);
+      user.save(function(){
+        res.redirect('/secrets');
+      });
+    }
+  });
 });
 
 app.listen(3000, function(){
