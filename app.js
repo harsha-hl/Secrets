@@ -14,6 +14,7 @@ const { use } = require('passport/lib');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const GitHubStrategy = require('passport-github2').Strategy;
 const TwitterStrategy = require('passport-twitter').Strategy;
+const FacebookStrategy = require('passport-facebook').Strategy;
 const findOrCreate = require('mongoose-findorcreate')
 
 
@@ -41,7 +42,8 @@ const userSchema = new mongoose.Schema({
     password: String,
     googleId: String, //Added in level 6 becuz users can now register via google or locally by giving username and password
     githubId: String,
-    twitterId: String
+    twitterId: String,
+    facebookId: String
 });
 
 // Setup passport-local-mongoose and add it as plugin to schema
@@ -70,11 +72,25 @@ passport.deserializeUser(function(id, done) {
     });
 });
 
+
+// Facebook - Just put http://localhost:3000 in site url
+passport.use(new FacebookStrategy({
+  clientID: process.env.FACEBOOK_APP_ID,
+  clientSecret: process.env.FACEBOOK_APP_SECRET,
+  callbackURL: "http://localhost:3000/auth/facebook/secrets"
+},
+function(accessToken, refreshToken, profile, cb) {
+  User.findOrCreate({ facebookId: profile.id }, function (err, user) {
+    return cb(err, user);
+  });
+}
+));
+
 // Twitter
 passport.use(new TwitterStrategy({
     consumerKey: process.env.TWITTER_CONSUMER_KEY,
     consumerSecret: process.env.TWITTER_CONSUMER_SECRET,
-    callbackURL: "http://127.0.0.1:3000/auth/twitter/secrets"    // Notice how localhost isnt used here...even in twitter console make sure the same 127....is there as callback url character to character
+    callbackURL: "http://localhost:3000/auth/twitter/secrets"    // Notice how localhost isnt used here...even in twitter console make sure the same 127....is there as callback url character to character
   },
   function(token, tokenSecret, profile, cb) {
     User.findOrCreate({ twitterId: profile.id }, function (err, user) {
@@ -98,7 +114,7 @@ passport.use(new GitHubStrategy({
   }
 ));
 
-// GOOGLE
+// GOOGLE - see google developer console for site url and callback url
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
@@ -149,14 +165,22 @@ app.get('/auth/github/secrets',
   app.get('/auth/twitter',
   passport.authenticate('twitter'));
 
-app.use('/auth/twitter/secrets', 
+app.get('/auth/twitter/secrets', 
   passport.authenticate('twitter', { failureRedirect: '/login' }),
   function(req, res) {
     // Successful authentication, redirect home.
     res.redirect('/secrets');
   });
 
+app.get('/auth/facebook',
+  passport.authenticate('facebook'));
 
+app.get('/auth/facebook/secrets',
+  passport.authenticate('facebook', { failureRedirect: '/login' }),
+  function(req, res) {
+    // Successful authentication, redirect home.
+    res.redirect('/secrets');
+  });
 
 
 
