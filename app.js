@@ -23,7 +23,7 @@ app.set('view engine', 'ejs');
 
 // Setup the session with some configuration and tell the app to use it
 app.use(session({
-    secret: "Our little secret.",
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false
 }));
